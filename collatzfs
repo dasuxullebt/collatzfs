@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+
+# some boilerplate taken from the "hello"-example from python-fuse
+
+import os, stat, errno, exceptions
+try:
+    import _find_fuse_parts
+except ImportError:
+    pass
+import fuse
+from fuse import Fuse
+
+if not hasattr(fuse, '__version__'):
+    raise RuntimeError, \
+        "your fuse-py doesn't know of fuse.__version__, probably it's too old."
+
+fuse.fuse_python_api = (0, 2)
+
+class MyStat(fuse.Stat):
+    def __init__(self):
+        self.st_mode = 0
+        self.st_ino = 0
+        self.st_dev = 0
+        self.st_nlink = 0
+        self.st_uid = 0
+        self.st_gid = 0
+        self.st_size = 0
+        self.st_atime = 0
+        self.st_mtime = 0
+        self.st_ctime = 0
+
+def validateSequence(sequence):
+    "Validate a sequence of integers to be a branch of the collatz tree."
+    if len(sequence) == 0:
+        return True
+    elif len(sequence) == 1:
+        return sequence == [1]
+    else:
+        sequence.reverse()
+        last = sequence[0]
+        for x in sequence[1:]:
+            if last % 2 == 0:
+                if x == last / 2:
+                    last = x
+                else:
+                    return False
+            else:
+                if x == 3 * last + 1:
+                    last = x
+                else:
+                    return False
+        return last == 1
+
+class CollatzFS(Fuse):
+    def getattr(self, path):
+        print "getattr:"
+        st = MyStat()
+        splitpath = path.split("/")
+
+        if len(splitpath) == 0:
+            return -errno.ENOENT
+
+        if splitpath[0] != '':
+            return -errno.ENOENT
+
+        seq = []
+
+        print path
+        print splitpath[1:-1]
+
+        for x in splitpath[1:-1]:
+            try:
+                seq.extend([int(x)])
+            except exceptions.ValueError:
+                print "ValueError"
+                return -errno.ENOENT
+
+        print seq
+
+        if validateSequence(seq):
+            st.st_mode = stat.S_IFDIR | 0555
+            st.st_nlink = 2
+            return st
+        else:
+            print "NotValidated"
+            return -errno.ENOENT
+
+    def readdir(self, path, offset):
+        print "readdir:"
+        print path
+
+        splitpath = path.split("/")
+
+        print splitpath
+
+        assert splitpath[0] == ''
+
+        sq = ['.', '..']
+
+        if path == "/":
+            print "/-path"
+            sq.extend(['1'])
+        else:
+            lastent = int(splitpath[-1])   
+            if lastent % 6 == 4:
+                sq.extend(map(str, [2*lastent, (lastent-1)/3]))
+            else:
+                sq.extend([str(2*lastent)])
+        print sq
+        for r in sq:
+            yield fuse.Direntry(r)
+
+    def open(self, path, flags):
+        # we have nothing to open
+        return -errno.ENOENT
+
+    def read(self, path, size, offset):
+        # we have nothing to read
+        return -errno.ENOENT
+
+def main():
+    usage="""
+Collatz File System
+
+""" + Fuse.fusage
+    server = CollatzFS(version="%prog " + fuse.__version__,
+                     usage=usage,
+                     dash_s_do='setsingle')
+
+    server.parse(errex=1)
+    server.main()
+
+if __name__ == '__main__':
+    main()
